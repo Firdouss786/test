@@ -1,0 +1,170 @@
+Symptoms
+Jobs are not automatically triggered when after a Push or Pull request event in GitHub (and/or GitHub Enterprise)
+Diagnostic/Treatment
+Pre-condition : Jenkins (resp. GitHub) can reach out to GitHub (resp. Jenkins)
+This troubleshooting requires from analysis of GitHub which generates a payload and Jenkins which parses it.
+
+A. On GitHub
+A.1 Webhook has not been generated or it is disabled (red cross)
+Check that “GitHub-API-User” has Admin permissions for the repo. Or Owner rol for Webhook at Organization level.
+If GitHub Username and Password is used for GitHub plugin configuration, validate that the user has not enabled 2FA.
+A.2 When the Webhook is generated
+As explained in GitHub Testing Webhooks.
+
+Click on Redeliver and evaluate the response and see if the Jenkins receive the payload in B.3 GitHub Hooks Problems Console and B.4 Dedicated Logger.
+
+GH_Redeliver.png
+
+B. On Jenkins
+B.1 Enforce to regenerate all Webhook for your Jenkins instance
+Go Manage Jenkins > GitHub plugin > Advance > Re-registers hooks for all jobs.
+
+B.2 Validate Plugin Configuration
+Identify which GitHub Server (“GitHub Server X”) contains the repository/organization where webhook is failing.
+For that server (“GitHub Server X”), validate its “GitHub API User” and its Rate limits by Manage Jenkins > GitHub plugin > “GitHub Server X” > Test Connection
+Verify credentials
+Credentials verified for user "GitHub-API-User", rate limit: 4994
+3.Validate the configuration of $JENKINS_HOME/github-plugin-configuration.xml:
+
+<github-plugin-configuration plugin="github@1.29.4">
+  <configs>
+    <github-server-config>
+      <name>GITHUB</name>
+      <apiUrl>https://api.github.com</apiUrl>
+      <manageHooks>true</manageHooks>
+      <credentialsId>GH-mock-carlosrodlop-ST</credentialsId>
+      <clientCacheSize>20</clientCacheSize>
+    </github-server-config>
+  </configs>
+  <hookSecretConfig>
+    <credentialsId></credentialsId>
+  </hookSecretConfig>
+A parent <github-server-config> is need to each of the GitHub and GitHub Enterprise Servers.
+For each server, you need to have configured a Crendential Secret Text GitHUb API Token: <credentialsId>GH-example-APIToken-ST</credentialsId>
+For each server, you need to have configured <manageHooks>true</manageHooks> to enable Re-registers hooks for all jobs
+B.3 Validate Job Configuration
+Review the plugin a jobs configurations as explained in GitHub WebHook Configuration for each of type of jobs.
+
+B.4 GitHub Hooks Problems Console
+Available from Manage Jenkins > GitHub Hooks Problems Console only and if only any of Automatic Webhooks has not been setup in GitHub.
+
+GH_consoleLink.png
+
+This page shows problems with webhooks, and ignored projects.
+
+GH_console.png
+
+Notes: Another warning messages also can be found at:
+
+a. in Manage Jenkins
+GH_automaticWebHookFailedBanner.png
+
+b. in the trigger configuration for For Non-Multibranch jobs
+GH_automaticWebHookFailedTooltip.png
+
+B.5 Dedicated Logger
+Create a logger for GitHub in https://<JENKINS_URL>/log/ including:
+
+hudson.plugins.git.GitStatus ALL
+com.cloudbees.jenkins.GitHubWebHook - ALL
+org.jenkinsci.plugins.github.- ALL
+Test Credentials
+A similar output to this is expected:
+
+Jul 01, 2016 12:51:38 PM FINE org.jenkinsci.plugins.github.webhook.GHEventHeader$PayloadHandler parse
+Header X-GitHub-Event -> null
+Jul 01, 2016 12:51:41 PM FINE org.jenkinsci.plugins.github.internal.GitHubLoginFunction applyNullSafe
+Create new GH client with creds id 021643c7-ef89-4014-b835-6fab9add5165
+
+Push payload
+A similar output to this is expected:
+
+Jul 01, 2016 12:32:03 PM FINE org.jenkinsci.plugins.github.webhook.GHEventHeader$PayloadHandler parse
+Header X-GitHub-Event -> push
+Jul 01, 2016 12:32:03 PM FINEST org.jenkinsci.plugins.github.webhook.GHEventPayload$PayloadHandler parse
+Payload {"ref":"refs/heads/master","before":"a1a91ab98386e4eced8ce0720d5c44158e85a3db","after":"58831ba23954684d98c91fdd303b2c8cebc7c504","created":false,"deleted":false,"forced":false,"base_ref":null,"compare":"https://github.com/example-org/example-repo/compare/a1a91ab98386...58831ba23954","commits":
+
+...
+
+Jul 01, 2016 12:32:03 PM INFO org.jenkinsci.plugins.github.webhook.subscriber.DefaultPushGHEventSubscriber onEvent
+Received POST for 
+https://github.com/example-org/example-repo
+Jul 01, 2016 12:32:03 PM FINE org.jenkinsci.plugins.github.webhook.subscriber.DefaultPushGHEventSubscriber$1 run
+Considering to poke ZD-37633-CBGitHubPRBuilder
+Jul 01, 2016 12:32:03 PM INFO org.jenkinsci.plugins.github.webhook.subscriber.DefaultPushGHEventSubscriber$1 run
+Poked ZD-37633-CBGitHubPRBuilder
+
+Pull Request payload
+A similar output to this is expected:
+
+Jul 01, 2016 2:33:23 PM FINE org.jenkinsci.plugins.github.webhook.GHEventHeader$PayloadHandler parse
+Header X-GitHub-Event -> pull_request
+Jul 01, 2016 2:33:23 PM FINEST org.jenkinsci.plugins.github.webhook.GHEventPayload$PayloadHandler parse
+Payload {"action":"closed","number":2,"pull_request":{"url":"https://api.github.com/repos/example-org/example-repo/pulls/2","id":75972749,"html_url":"https://github.com/example-org/example-repo/pull/2","diff_url":"https://github.com/example-org/example-repo/pull/2.diff","patch_url":"https://github.com/example-org/example-repo-
+...
+
+B.5 GitHub Hook Log
+Within the Job Page > GitHub Hook Log
+
+GH_JobHookLogs.png
+
+B.6 Jenkins logs
+The following traces illustrate successful build triggers on Jenkins logs:
+
+Webhook register
+Nov 09, 2017 6:18:43 PM org.jenkinsci.plugins.github.config.GitHubPluginConfig doReRegister
+INFO: Called registerHooks() for 1 jobs
+Nov 09, 2017 6:18:43 PM org.jenkinsci.plugins.github.webhook.WebhookManager$1 run
+INFO: GitHub webhooks activated for job myJobExample with [GitHubRepositoryName[host=github.com,username=example-org,repository=example-repo]] (events: [PUSH, REPOSITORY])
+In case the webhook was sucessfully, Jenkins receives a PING event from repo webhook so a similar trace like the following would appear:
+
+Nov 09, 2017 6:34:39 PM org.jenkinsci.plugins.github.webhook.subscriber.PingGHEventSubscriber onEvent
+INFO: PING webhook received from repo <https://github.example.com/example-org/example-repo>!
+Push Event
+A similar output to this is expected:
+
+INFO: Received POST for https://github.example.com/example-org/repo-example
+Nov 09, 2017 6:48:25 PM org.jenkinsci.plugins.github.webhook.subscriber.DefaultPushGHEventSubscriber$1 run
+INFO: Poked jobExample
+Nov 09, 2017 6:48:26 PM com.cloudbees.jenkins.GitHubPushTrigger$1 run
+INFO: SCM changes detected in jobExample. Triggering #2
+Pull Request Event
+A similar output to this is expected:
+
+Nov 09, 2017 8:22:04 PM com.cloudbees.jenkins.plugins.github_pull.PullRequestHookReceiver doIndex
+INFO: Accepted GitHub pull request hook delivery 44b54ed0-c583-11e7-87f4-6814e09a595a
+Nov 09, 2017 8:22:04 PM com.cloudbees.jenkins.plugins.github_pull.PullRequestPayload call
+INFO: Processing hook call for pull-request #9 for repo-example
+  remote: Counting objects
+  remote: Compressing objects
+  Receiving objects
+    Done: 57
+  Resolving deltas
+    Done: 26
+  Updating references
+    Done: 1
+Nov 09, 2017 8:22:07 PM com.cloudbees.jenkins.plugins.github_pull.PullRequestPayload call
+INFO: Added validated merge to GitHub pull request #9 to example-org/repo-example
+Nov 09, 2017 8:22:23 PM hudson.model.Run execute
+INFO: jobExample #6 main build action completed: SUCCESS
+Tested products/plugins version
+The latest update of this article has been tested with:
+
+CJP-CM 2.73.3.1
+GitHub plugin 1.27.0
+GitHub Branch Source Plugin 2.3.1
+CloudBees Pull Request Builder for GitHub 1.11
+GitHub API v3
+GH_Redeliver.png-e3eb3d64(200 KB)
+GH_consoleLink.png-160be8d9(100 KB)
+GH_console.png-e35c9093(200 KB)
+GH_automaticWebHookFailedBanner.png-d6664c26(100 KB)
+GH_automaticWebHookFailedTooltip.png-e4589fee(20 KB)
+GH_JobHookLogs.png-c46d6c21(100 KB)
+Was this article helpful?   1 out of 1 found this helpful	Facebook Twitter LinkedIn
+Have more questions?
+
+Submit a request
+Schedule an Appointment
+0 Comments
+Please sign in to leave a comment.
